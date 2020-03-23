@@ -12,6 +12,7 @@
     "@types/shelljs": "~0.8.0",
     "clang-format": "~1.2.2",
     "fs": "~0.0.1-security",
+    "ghooks": "^2.0.4",
     "jasmine": "~3.1.0",
     "semver": "^6.3.0",
     "shelljs": "0.8.2",
@@ -20,6 +21,11 @@
     "tslint-no-circular-imports": "~0.6.1",
     "typescript": "3.3.3333",
     "yalc": "~1.0.0-pre.21"
+  },
+  "config": {
+    "ghooks": {
+      "pre-commit": "cd speech-commands && npm run build-npm"
+    }
   },
   "license": "Apache-2.0"
 }
