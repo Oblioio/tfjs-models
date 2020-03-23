@@ -21,11 +21,11 @@
 
 import * as tf from '@tensorflow/tfjs';
 
-import {getAudioContextConstructor, getAudioMediaStream} from './browser_fft_utils';
-import {FeatureExtractor, RecognizerParams} from './types';
+import { getAudioContextConstructor, getAudioMediaStream } from './browser_fft_utils';
+import { FeatureExtractor, RecognizerParams } from './types';
 
 export type SpectrogramCallback = (freqData: tf.Tensor, timeData?: tf.Tensor) =>
-    Promise<boolean>;
+  Promise<boolean>;
 
 /**
  * Configurations for constructing BrowserFftFeatureExtractor.
@@ -109,6 +109,7 @@ export class BrowserFftFeatureExtractor implements FeatureExtractor {
   // tslint:disable-next-line:no-any
   private audioContextConstructor: any;
   private audioContext: AudioContext;
+  private streamSource: MediaStreamAudioSourceNode;
   private analyser: AnalyserNode;
   private tracker: Tracker;
   private freqData: Float32Array;
@@ -129,8 +130,8 @@ export class BrowserFftFeatureExtractor implements FeatureExtractor {
   constructor(config: BrowserFftFeatureExtractorConfig) {
     if (config == null) {
       throw new Error(
-          `Required configuration object is missing for ` +
-          `BrowserFftFeatureExtractor constructor`);
+        `Required configuration object is missing for ` +
+        `BrowserFftFeatureExtractor constructor`);
     }
 
     if (config.spectrogramCallback == null) {
@@ -139,14 +140,14 @@ export class BrowserFftFeatureExtractor implements FeatureExtractor {
 
     if (!(config.numFramesPerSpectrogram > 0)) {
       throw new Error(
-          `Invalid value in numFramesPerSpectrogram: ` +
-          `${config.numFramesPerSpectrogram}`);
+        `Invalid value in numFramesPerSpectrogram: ` +
+        `${config.numFramesPerSpectrogram}`);
     }
 
     if (config.suppressionTimeMillis < 0) {
       throw new Error(
-          `Expected suppressionTimeMillis to be >= 0, ` +
-          `but got ${config.suppressionTimeMillis}`);
+        `Expected suppressionTimeMillis to be >= 0, ` +
+        `but got ${config.suppressionTimeMillis}`);
     }
     this.suppressionTimeMillis = config.suppressionTimeMillis;
 
@@ -160,24 +161,24 @@ export class BrowserFftFeatureExtractor implements FeatureExtractor {
     this.includeRawAudio = config.includeRawAudio;
 
     tf.util.assert(
-        this.overlapFactor >= 0 && this.overlapFactor < 1,
-        () => `Expected overlapFactor to be >= 0 and < 1, ` +
-            `but got ${this.overlapFactor}`);
+      this.overlapFactor >= 0 && this.overlapFactor < 1,
+      () => `Expected overlapFactor to be >= 0 and < 1, ` +
+        `but got ${this.overlapFactor}`);
 
     if (this.columnTruncateLength > this.fftSize) {
       throw new Error(
-          `columnTruncateLength ${this.columnTruncateLength} exceeds ` +
-          `fftSize (${this.fftSize}).`);
+        `columnTruncateLength ${this.columnTruncateLength} exceeds ` +
+        `fftSize (${this.fftSize}).`);
     }
 
     this.audioContextConstructor = getAudioContextConstructor();
   }
 
   async start(audioTrackConstraints?: MediaTrackConstraints):
-      Promise<Float32Array[]|void> {
+    Promise<Float32Array[] | void> {
     if (this.frameIntervalTask != null) {
       throw new Error(
-          'Cannot start already-started BrowserFftFeatureExtractor');
+        'Cannot start already-started BrowserFftFeatureExtractor');
     }
 
     this.stream = await getAudioMediaStream(audioTrackConstraints);
@@ -185,15 +186,15 @@ export class BrowserFftFeatureExtractor implements FeatureExtractor {
     this.audioContext = new this.audioContextConstructor() as AudioContext;
     if (this.audioContext.sampleRate !== this.sampleRateHz) {
       console.warn(
-          `Mismatch in sampling rate: ` +
-          `Expected: ${this.sampleRateHz}; ` +
-          `Actual: ${this.audioContext.sampleRate}`);
+        `Mismatch in sampling rate: ` +
+        `Expected: ${this.sampleRateHz}; ` +
+        `Actual: ${this.audioContext.sampleRate}`);
     }
-    const streamSource = this.audioContext.createMediaStreamSource(this.stream);
+    this.streamSource = this.audioContext.createMediaStreamSource(this.stream);
     this.analyser = this.audioContext.createAnalyser();
     this.analyser.fftSize = this.fftSize * 2;
     this.analyser.smoothingTimeConstant = 0.0;
-    streamSource.connect(this.analyser);
+    this.streamSource.connect(this.analyser);
     // Reset the queue.
     this.freqDataQueue = [];
     this.freqData = new Float32Array(this.fftSize);
@@ -202,12 +203,12 @@ export class BrowserFftFeatureExtractor implements FeatureExtractor {
       this.timeData = new Float32Array(this.fftSize);
     }
     const period =
-        Math.max(1, Math.round(this.numFrames * (1 - this.overlapFactor)));
+      Math.max(1, Math.round(this.numFrames * (1 - this.overlapFactor)));
     this.tracker = new Tracker(
-        period,
-        Math.round(this.suppressionTimeMillis / this.frameDurationMillis));
+      period,
+      Math.round(this.suppressionTimeMillis / this.frameDurationMillis));
     this.frameIntervalTask = setInterval(
-        this.onAudioFrame.bind(this), this.fftSize / this.sampleRateHz * 1e3);
+      this.onAudioFrame.bind(this), this.fftSize / this.sampleRateHz * 1e3);
   }
 
   private async onAudioFrame() {
@@ -229,15 +230,15 @@ export class BrowserFftFeatureExtractor implements FeatureExtractor {
     if (shouldFire) {
       const freqData = flattenQueue(this.freqDataQueue);
       const freqDataTensor = getInputTensorFromFrequencyData(
-          freqData, [1, this.numFrames, this.columnTruncateLength, 1]);
+        freqData, [1, this.numFrames, this.columnTruncateLength, 1]);
       let timeDataTensor: tf.Tensor;
       if (this.includeRawAudio) {
         const timeData = flattenQueue(this.timeDataQueue);
         timeDataTensor = getInputTensorFromFrequencyData(
-            timeData, [1, this.numFrames * this.fftSize]);
+          timeData, [1, this.numFrames * this.fftSize]);
       }
       const shouldRest =
-          await this.spectrogramCallback(freqDataTensor, timeDataTensor);
+        await this.spectrogramCallback(freqDataTensor, timeDataTensor);
       if (shouldRest) {
         this.tracker.suppress();
       }
@@ -248,7 +249,7 @@ export class BrowserFftFeatureExtractor implements FeatureExtractor {
   async stop(): Promise<void> {
     if (this.frameIntervalTask == null) {
       throw new Error(
-          'Cannot stop because there is no ongoing streaming activity.');
+        'Cannot stop because there is no ongoing streaming activity.');
     }
     clearInterval(this.frameIntervalTask);
     this.frameIntervalTask = null;
@@ -261,14 +262,14 @@ export class BrowserFftFeatureExtractor implements FeatureExtractor {
 
   setConfig(params: RecognizerParams) {
     throw new Error(
-        'setConfig() is not implemented for BrowserFftFeatureExtractor.');
+      'setConfig() is not implemented for BrowserFftFeatureExtractor.');
   }
 
   getFeatures(): Float32Array[] {
     throw new Error(
-        'getFeatures() is not implemented for ' +
-        'BrowserFftFeatureExtractor. Use the spectrogramCallback ' +
-        'field of the constructor config instead.');
+      'getFeatures() is not implemented for ' +
+      'BrowserFftFeatureExtractor. Use the spectrogramCallback ' +
+      'field of the constructor config instead.');
   }
 }
 
@@ -280,7 +281,7 @@ export function flattenQueue(queue: Float32Array[]): Float32Array {
 }
 
 export function getInputTensorFromFrequencyData(
-    freqData: Float32Array, shape: number[]): tf.Tensor {
+  freqData: Float32Array, shape: number[]): tf.Tensor {
   const vals = new Float32Array(tf.util.sizeFromShape(shape));
   // If the data is less than the output shape, the rest is padded with zeros.
   vals.set(freqData, vals.length - freqData.length);
@@ -310,8 +311,8 @@ export class Tracker {
     this.counter = 0;
 
     tf.util.assert(
-        this.period > 0,
-        () => `Expected period to be positive, but got ${this.period}`);
+      this.period > 0,
+      () => `Expected period to be positive, but got ${this.period}`);
   }
 
   /**
@@ -322,8 +323,8 @@ export class Tracker {
   tick(): boolean {
     this.counter++;
     const shouldFire = (this.counter % this.period === 0) &&
-        (this.suppressionOnset == null ||
-         this.counter - this.suppressionOnset > this.suppressionTime);
+      (this.suppressionOnset == null ||
+        this.counter - this.suppressionOnset > this.suppressionTime);
     return shouldFire;
   }
 
